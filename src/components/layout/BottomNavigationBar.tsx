@@ -198,7 +198,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             role="tab"
             aria-selected={isActive}
             onClick={() => handleTabClick(tab.id)}
-            className={`relative flex-1 h-[52px] flex items-center justify-center rounded-full cursor-pointer focus:outline-none isolate transition-colors duration-200 overflow-hidden ${
+            className={`relative flex-1 h-[54px] py-[2px] flex items-center justify-center rounded-full cursor-pointer outline-none focus:outline-none focus:ring-0 isolate transition-colors duration-200 overflow-hidden ${
               isActive ? 'text-[#C084FC]' : 'text-white'
             }`}
             aria-label={tab.label}
@@ -206,7 +206,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             {/* Active Capsule Pill Overlay */}
             {isActive && (
               <div
-                className="absolute inset-0 rounded-full bg-white/10 border border-white/5 shadow-none pointer-events-none z-0 transition-all duration-200"
+                className="absolute inset-0 rounded-full bg-white/10 outline-none border-0 shadow-none pointer-events-none z-0 transition-all duration-200"
                 aria-hidden="true"
               />
             )}

@@ -888,10 +888,19 @@ export const DetailsView: React.FC = () => {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 id="details-download-button"
-                onClick={() => setShowDownloadModal(true)}
-                className="p-1 text-white hover:text-white/80 transition-all cursor-pointer active:scale-90"
-                title="Download"
-                aria-label="Download"
+                onClick={() => {
+                  if (!isLoadingContent) {
+                    setShowDownloadModal(true);
+                  }
+                }}
+                disabled={isLoadingContent}
+                className={`p-1 text-white transition-all ${
+                  isLoadingContent
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'opacity-100 hover:text-white/80 cursor-pointer active:scale-90'
+                }`}
+                title={isLoadingContent ? 'Loading content...' : 'Download'}
+                aria-label={isLoadingContent ? 'Loading content...' : 'Download'}
               >
                 {/* Solid download arrow with bottom bar matching exact screenshot */}
                 <svg

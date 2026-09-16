@@ -4,7 +4,7 @@ import { useApp, DEFAULT_FILTERS } from '../../context/AppContext';
 import { searchAniList, searchMangaDexList, optimizeImageUrl } from '../../services/apiClient';
 import { cacheGet, cacheGetSync, cacheSet, preloadMediaImages } from '../../services/cacheService';
 import { MediaCategory, MediaItem, FilterOptions } from '../../types';
-import { getRatingDisplay } from '../../utils/rating';
+import { getRatingDisplay, sortByRatingDescending } from '../../utils/rating';
 import { PosterImage } from '../common/PosterImage';
 
 // Synchronous instant local filter matching helper
@@ -14,7 +14,7 @@ function applyLocalFilterMatching(
   query: string
 ): MediaItem[] {
   const trimmedQ = query.trim().toLowerCase();
-  return items.filter((item) => {
+  const matched = items.filter((item) => {
     // Search query match if provided
     if (trimmedQ) {
       const matchTitle =
@@ -139,50 +139,48 @@ function applyLocalFilterMatching(
 
     return true;
   });
+
+  // Default content when user has not typed a search query is sorted by Ratings descending
+  if (!trimmedQ) {
+    return sortByRatingDescending(matched);
+  }
+
+  return matched;
 }
 
 function getCategoryFallbackRecommendations(cat: MediaCategory): MediaItem[] {
-  if (cat === 'manga') {
-    return (
-      cacheGetSync<MediaItem[]>('home_manga_popular_30') ||
-      cacheGetSync<MediaItem[]>('home_manga_popular_10') ||
-      cacheGetSync<MediaItem[]>('home_manga_trending_15') ||
-      cacheGetSync<MediaItem[]>('home_manga_trending_6') ||
-      []
-    );
+  const allCached = getAllCachedMediaItems();
+  const matchedCat = allCached.filter((item) => (item.category || 'anime') === cat);
+  if (matchedCat.length > 0) {
+    return sortByRatingDescending(matchedCat).slice(0, 50);
   }
-  if (cat === 'novel') {
-    return (
-      cacheGetSync<MediaItem[]>('home_novel_popular_30') ||
-      cacheGetSync<MediaItem[]>('home_novel_popular_10') ||
-      cacheGetSync<MediaItem[]>('home_novel_seasonal_30') ||
-      cacheGetSync<MediaItem[]>('home_novel_seasonal_10') ||
-      []
-    );
-  }
-  return (
-    cacheGetSync<MediaItem[]>('home_anime_popular_season_30') ||
-    cacheGetSync<MediaItem[]>('home_anime_popular_season_10') ||
-    cacheGetSync<MediaItem[]>('home_anime_trending_15') ||
-    cacheGetSync<MediaItem[]>('home_anime_trending_6') ||
-    []
-  );
+  return [];
 }
 
 function getAllCachedMediaItems(): MediaItem[] {
   const keys = [
+    'home_anime_popular_season_active_30',
     'home_anime_popular_season_30',
     'home_anime_popular_season_10',
     'home_anime_trending_15',
     'home_anime_trending_6',
+    'home_anime_new_episodes_40',
+    'home_anime_community_loved_30',
+    'home_anime_recently_completed_30',
+    'home_anime_movies_30',
+    'home_anime_upcoming_50',
     'home_manga_popular_30',
     'home_manga_popular_10',
     'home_manga_trending_15',
     'home_manga_trending_6',
+    'home_manga_releasing_30',
+    'home_manga_community_loved_30',
     'home_novel_popular_30',
     'home_novel_popular_10',
     'home_novel_seasonal_30',
     'home_novel_seasonal_10',
+    'home_novel_trending_30',
+    'home_novel_fantasy_30',
   ];
   const items: MediaItem[] = [];
   const seen = new Set<string>();
@@ -320,14 +318,15 @@ export const SearchView: React.FC = () => {
       for (const cat of categories) {
         const key = getCacheKey(cat, '', filters);
         if (!categoryCacheRef.current.has(key)) {
-          searchAniList('', { ...filters, category: cat }, 1, 30)
+          searchAniList('', { ...filters, category: cat }, 1, 50)
             .then((res) => {
               if (res?.items && res.items.length > 0) {
-                mergeDiscoveredItems(res.items);
-                categoryCacheRef.current.set(key, res.items);
+                const sorted = sortByRatingDescending(res.items);
+                mergeDiscoveredItems(sorted);
+                categoryCacheRef.current.set(key, sorted);
                 // If it matches currently selected category and results are still empty or showing fallback, set results
                 if (cat === filters.category && (!results || results.length === 0 || !searchInput)) {
-                  setResults(res.items);
+                  setResults(sorted);
                 }
               }
             })
@@ -391,7 +390,8 @@ export const SearchView: React.FC = () => {
         }
         let fetchedItems: MediaItem[] = [];
         try {
-          const response = await searchAniList(searchInput, filters, 1, 40);
+          const fetchLimit = !searchInput.trim() ? 50 : 40;
+          const response = await searchAniList(searchInput, filters, 1, fetchLimit);
           if (Array.isArray(response?.items)) {
             fetchedItems = response.items;
           }
@@ -420,17 +420,18 @@ export const SearchView: React.FC = () => {
         }));
 
         if (sanitizedItems.length > 0) {
-          mergeDiscoveredItems(sanitizedItems);
-          categoryCacheRef.current.set(currentKey, sanitizedItems);
-          cacheSet(`search_${currentKey}`, sanitizedItems);
-          setResults(sanitizedItems);
+          const finalItems = !searchInput.trim() ? sortByRatingDescending(sanitizedItems) : sanitizedItems;
+          mergeDiscoveredItems(finalItems);
+          categoryCacheRef.current.set(currentKey, finalItems);
+          cacheSet(`search_${currentKey}`, finalItems);
+          setResults(finalItems);
         } else if (!searchInput.trim()) {
           const fallbacks = getCategoryFallbackRecommendations(filters.category);
           const filteredFallbacks = applyLocalFilterMatching(fallbacks, filters, searchInput);
           if (filteredFallbacks.length > 0) {
-            setResults(filteredFallbacks);
+            setResults(sortByRatingDescending(filteredFallbacks));
           } else if (fallbacks.length > 0) {
-            setResults(fallbacks);
+            setResults(sortByRatingDescending(fallbacks));
           }
         } else {
           // If live API returns no items for this query, try client-side local matching from all cached discovered items
@@ -594,8 +595,14 @@ export const SearchView: React.FC = () => {
         (item) => !userLibrary.some((entry) => String(entry.mediaId) === String(item.id))
       );
     }
-    return Array.from(new Map(list.map((item) => [String(item.id), item])).values());
-  }, [results, filters.libraryState, userLibrary]);
+    const unique = Array.from(new Map(list.map((item) => [String(item.id), item])).values());
+    // When showing default content (no search query typed), sort strictly by Ratings descending:
+    // higher ratings at the top, lower ratings at the bottom
+    if (!searchInput.trim()) {
+      return sortByRatingDescending(unique).slice(0, 50);
+    }
+    return unique;
+  }, [results, filters.libraryState, userLibrary, searchInput]);
 
   return (
     <div className="w-full h-screen sm:h-[100dvh] flex flex-col bg-black text-white select-none overflow-hidden">
@@ -795,7 +802,7 @@ export const SearchView: React.FC = () => {
               {activeFiltersCount > 1 && (
                 <button
                   onClick={() => removeFilter('all')}
-                  className="px-3 py-1.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-all flex-shrink-0 cursor-pointer"
+                  className="flex items-center justify-center px-3.5 py-1.5 rounded-full text-sm font-semibold bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-all flex-shrink-0 cursor-pointer shadow-sm"
                 >
                   Clear all
                 </button>

@@ -1185,7 +1185,7 @@ export async function searchAniList(
     perPage,
     type,
     isAdult: false,
-    sort: (searchQuery.trim() || filters.studio?.trim()) ? ['SEARCH_MATCH', 'POPULARITY_DESC'] : ['POPULARITY_DESC'],
+    sort: (searchQuery.trim() || filters.studio?.trim()) ? ['SEARCH_MATCH', 'POPULARITY_DESC'] : ['SCORE_DESC', 'POPULARITY_DESC'],
   };
 
   if (searchQuery.trim()) {
